@@ -1,11 +1,14 @@
 import { Link, Outlet, useMatch, useNavigate } from '@tanstack/react-router';
 import {
   Download,
+  Info,
   LayoutGrid,
   Menu,
   Moon,
   ScanLine,
+  ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   Trash2,
   X,
@@ -13,6 +16,7 @@ import {
 import { MotionConfig } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { BrandMark } from '../components/BrandMark';
+import { RaritySticker } from '../components/RaritySticker';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useInferenceStore } from '../store/useInferenceStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -24,7 +28,7 @@ import {
   PopToggle,
   PopToggleGroup,
 } from '../ui/primitives';
-import { formatLoadStageLabel } from '../ui/theme';
+import { formatLoadStageLabel, RARITY_LIST, RARITY_THEME } from '../ui/theme';
 
 const PIXEL_PRESETS = [
   { label: '128', pixels: 131_072 },
@@ -60,6 +64,7 @@ export function RootLayout() {
   const detailMatch = useMatch({ from: '/creatures/$id', shouldThrow: false });
   const scanMatch = useMatch({ from: '/scan', shouldThrow: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -161,6 +166,12 @@ export function RootLayout() {
                         {modelBadge}
                       </span>
                     </PopMenu.Item>
+                    <PopMenu.Item onClick={() => setAboutOpen(true)}>
+                      <span className="inline-flex items-center gap-2">
+                        <Info className="h-3.5 w-3.5" />
+                        <span>このサイトについて</span>
+                      </span>
+                    </PopMenu.Item>
                   </PopMenu.Popup>
                 </PopMenu.Positioner>
               </PopMenu.Portal>
@@ -171,6 +182,107 @@ export function RootLayout() {
         <div className="flex flex-1 flex-col">
           <Outlet />
         </div>
+
+        <footer className="mx-auto flex w-full max-w-4xl items-center justify-center px-4 pt-1 pb-5">
+          <button
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-extrabold text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-sub)] hover:text-[var(--fg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--attr-pop)]"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2.3} />
+            <span>ブラウザ内完結（画像送信なし） · しくみとレア度</span>
+          </button>
+        </footer>
+
+        {/* About / Transparency Dialog */}
+        <PopDialog.Root open={aboutOpen} onOpenChange={setAboutOpen}>
+          <PopDialog.Content>
+            <div className="flex items-center justify-between gap-2 border-b-2 border-[var(--surface-sub)] pb-3">
+              <PopDialog.Title>
+                <Info className="h-4 w-4" />
+                <span>decision-creatures とは</span>
+              </PopDialog.Title>
+              <PopDialog.Close
+                render={
+                  <PopButton variant="ghost" size="icon" aria-label="閉じる">
+                    <X className="h-4 w-4" />
+                  </PopButton>
+                }
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3.5">
+              <section className="flex flex-col gap-1.5 rounded-2xl bg-[var(--surface-sub)] p-3.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-black text-[var(--fg)]">
+                  <ScanLine className="h-3.5 w-3.5" />
+                  <span>何をしているサイト？</span>
+                </div>
+                <p className="text-[11.5px] leading-relaxed font-bold text-[var(--fg-muted)]">
+                  身近な写真をブラウザ内蔵の AI（WebGPU）で 11 の観点（材質・生息域・大きさ・重さ・強さ・速さ・神秘性など）から解析し、タイプとステータスを持ったクリーチャーカードを生成・保存する図鑑アプリです。
+                </p>
+              </section>
+
+              <section className="flex flex-col gap-2 rounded-2xl bg-[var(--surface-sub)] p-3.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-black text-[var(--fg)]">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>レア度（C / U / R / E / M）の意味</span>
+                </div>
+                <div className="flex flex-col gap-2 rounded-xl bg-[var(--surface)] px-2 py-2.5">
+                  <div className="grid grid-cols-5 gap-1">
+                    {RARITY_LIST.map((tier) => {
+                      const label = RARITY_THEME[tier].label;
+                      const displayName = label.charAt(0) + label.slice(1).toLowerCase();
+                      return (
+                        <div key={tier} className="flex flex-col items-center gap-0.5">
+                          <RaritySticker tier={tier} size="sm" className="h-7 w-7" />
+                          <span className="text-[9.5px] leading-tight font-extrabold text-[var(--fg-muted)]">
+                            {displayName}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between px-1 text-[10px] font-extrabold text-[var(--fg-muted)]">
+                    <span>← 定番（迷い小）</span>
+                    <span>未知（迷い大）→</span>
+                  </div>
+                </div>
+                <p className="text-[11.5px] leading-relaxed font-bold text-[var(--fg-muted)]">
+                  ランダムなガチャではなく、AI がその写真の判定にどれだけ「迷ったか」（予測不確実度）で決まります。典型的な被写体ほど C / U に、複数の性質が混ざる不思議な被写体や珍しい構図ほど R / E / M になりやすくなります。
+                </p>
+              </section>
+
+              <section className="flex flex-col gap-1.5 rounded-2xl bg-[var(--surface-sub)] p-3.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-black text-[var(--fg)]">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>すべてローカルで完結</span>
+                </div>
+                <p className="text-[11.5px] leading-relaxed font-bold text-[var(--fg-muted)]">
+                  写真の解析はすべてお使いの端末の GPU 上で実行され、画像が外部サーバーへ送信されることはありません。作成したカード・写真・AI モデル（初回のみ約 200 MB）もすべてブラウザ内（IndexedDB / OPFS）に保存されます。
+                </p>
+              </section>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-[10.5px] leading-snug font-bold text-[var(--fg-muted)]">
+                  Built with LiquidAI/d1-2B
+                  <br />
+                  LFM Open License v1.0
+                </span>
+                <PopButton
+                  variant="surface"
+                  size="sm"
+                  onClick={() => {
+                    setAboutOpen(false);
+                    setSettingsOpen(true);
+                  }}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span>モデル設定</span>
+                </PopButton>
+              </div>
+            </div>
+          </PopDialog.Content>
+        </PopDialog.Root>
 
         {/* Model Settings & License Dialog */}
         <PopDialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>

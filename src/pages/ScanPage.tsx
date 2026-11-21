@@ -510,9 +510,14 @@ export function ScanPage() {
 
           {stage === 'confirm' && (
             <div className="flex flex-1 flex-col justify-between px-2 pt-2 pb-1 text-center">
-              <p className="text-xs leading-relaxed font-extrabold text-[var(--fg)]">
-                初回のみ AI モデル（約 200 MB）を端末に保存します
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs leading-relaxed font-extrabold text-[var(--fg)]">
+                  初回のみ AI モデル（約 200 MB）を端末に保存します
+                </p>
+                <p className="text-[11px] font-bold text-[var(--fg-muted)]">
+                  画像は外部送信されず、ブラウザ内で解析します
+                </p>
+              </div>
               <div className="flex items-center justify-center gap-2">
                 <PopButton variant="surface" size="sm" onClick={() => setStage('crop')}>
                   <ArrowLeft className="h-3.5 w-3.5" />
