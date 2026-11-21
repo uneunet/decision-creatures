@@ -7,12 +7,12 @@
 ## v1 リリース残タスク
 
 ### 実機検証
-- [ ] WebGPU 対応ブラウザ実機での E2E 動作確認（`decoder_q4f16` + `vision_encoder_q8` の初回 1.68 GB ダウンロード・Cache API 再読み込み・推論レイテンシ・VRAM/RAM 消費・画像トークン上限切替の実測）
-- [ ] モバイル実機での入力・共有チェック（カメラ撮影、カード枠内パン＆ズームクロップ、`navigator.share` による表裏 PNG 共有）
+- [x] iPhone Safari 実機での軽量 WebGPU 推論 E2E 動作確認（`vision_encoder_q8` + 蒸留 `creature_head.onnx` 約 201 MB の初回 OPFS 保存・再読み込み・スキャン完走・`File.arrayBuffer()` 読込確認）
+- [ ] デスクトップ WebGPU ブラウザおよびモバイル実機での周辺操作チェック（カメラ撮影、カード枠内パン＆ズームクロップ、`navigator.share` による表裏 PNG 共有、画像トークン上限切替）
 
 ### デプロイ・公開仕上げ
 - [ ] Cloudflare Workers へ本番デプロイ（`bun run deploy` / `cf deploy dist`）および `dc.uneu.net` 割り当て
-- [ ] 本番 URL（`https://dc.uneu.net`）での動作確認（`/scan`・`/creatures/:id` 直アクセス時の SPA フォールバック、jsDelivr 経由の ORT WASM ロード、WebGPU Worker 実行、OGP カード検証）
+- [ ] 本番 URL（`https://dc.uneu.net`）での動作確認（`/models/creature_head.onnx` 配信・`/scan`・`/creatures/:id` 直アクセス時の SPA フォールバック、jsDelivr 経由の ORT WASM ロード、WebGPU Worker 実行、OGP カード検証）
 
 ---
 
@@ -40,6 +40,7 @@
 - [x] UI デザイン基盤（`@base-ui/react` + `lucide-react` + Tailwind CSS v4 + Motion + LINE Seed JP フォント、ライト／ダーク対応フラットポップ、[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md), [ADR 0010](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)）
 - [x] クライアント SPA ルーティング（`@tanstack/react-router` コードベース定義・URL Search Params 同期、[ADR 0009](adr/0009-client-routing-with-tanstack-router.md)）
 - [x] コレクション一覧（`/`）・スキャン（`/scan`）・詳細（`/creatures/$id`）・表裏 2 枚並び PNG 出力＆共有・全 11 設問スコア詳細
-- [x] モデルセットアップ導線（初回 1.68 GB 確認＆進捗表示・キャッシュ管理・WebGPU 非対応案内・`LFM Open License v1.0` 帰属表示）
+- [x] モデルセットアップ導線（初回約 200 MB 確認＆進捗表示・OPFS キャッシュ管理・旧キャッシュ自動掃除・WebGPU 非対応案内・`LFM Open License v1.0` 帰属表示）
+- [x] モバイル WebGPU 向け知識蒸留パイプライン構築と本番組み込み（`distill/`・完全ランダム CC12M 10,000 枚学習・未学習 12 枚一致率 93.3% / Stat MAE 2.80 / 相関 r=0.907・`public/models/creature_head.onnx` 4.85 MB・[ADR 0011](adr/0011-distilled-vision-head-for-mobile-webgpu.md)）
 - [x] Cloudflare Workers 静的配信設定（`cf` CLI + `cloudflare.config.ts`・`.assetsignore`＋本番 CDN 経由 ORT WASM ロード・`--dry-run` 通過）
 - [x] ブランドアセット＆メタ情報（ロゴ `BrandMark` / `logo.svg`・`favicon.svg`・`apple-touch-icon.png`・`dc.uneu.net` 向け `ogp.png` 1200×630＆OGP/Twitter Card メタタグ）
