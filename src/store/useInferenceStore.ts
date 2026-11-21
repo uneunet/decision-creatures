@@ -1,14 +1,17 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { hasCachedModelAssets } from '../inference/cache';
-import { InferenceWorkerClient } from '../inference/client';
+import { InferenceWorkerClient, WorkerClientError } from '../inference/client';
 import { DEFAULT_MAX_PIXELS } from '../inference/preprocess';
 import rawPlan from '../inference/prompt-plan.json';
 import type { CreatureAnalysis, LoadProgress, PromptPlan } from '../inference/types';
+import { createSafeLocalStorage } from '../lib/storage';
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'analyzing' | 'error';
 
 const plan = rawPlan as unknown as PromptPlan;
+
+const safeInferenceStorage = createSafeLocalStorage();
 
 function detectWebGpuSupport(): boolean {
   return typeof navigator !== 'undefined' && 'gpu' in navigator;
@@ -47,7 +50,7 @@ function ensureClient(
       onProgress: (progress) => set({ progress }),
       onReady: ({ webgpuAdapter, cached, initMs }) =>
         set({
-          status: 'ready',
+          status: get().status === 'analyzing' ? 'analyzing' : 'ready',
           webgpuAdapter: webgpuAdapter ?? get().webgpuAdapter,
           cached,
           cacheAvailable: true,
@@ -132,7 +135,7 @@ export const useInferenceStore = create<InferenceState>()(
           set({
             status: 'error',
             error: {
-              code: 'INFERENCE_FAILED',
+              code: err instanceof WorkerClientError ? err.code : 'INFERENCE_FAILED',
               message: err instanceof Error ? err.message : String(err),
             },
           });
@@ -156,6 +159,15 @@ export const useInferenceStore = create<InferenceState>()(
     }),
     {
       name: 'decision-creatures-inference',
+      storage: createJSONStorage(() => safeInferenceStorage),
+      version: 2,
+      migrate: (persistedState, version) => {
+        const state = (persistedState ?? {}) as Partial<{ maxPixels: number }>;
+        if (version < 2 || !state.maxPixels || state.maxPixels > DEFAULT_MAX_PIXELS) {
+          return { ...state, maxPixels: DEFAULT_MAX_PIXELS };
+        }
+        return state;
+      },
       partialize: (state) => ({ maxPixels: state.maxPixels }),
     },
   ),

@@ -13,8 +13,8 @@
 
 ## 推論パイプライン（最小依存方針）
 
-- 推論ランタイムの依存は **`onnxruntime-web`（`onnxruntime-web/webgpu`、WebGPU 専用）のみ** に絞る（[ADR 0006](docs/adr/0006-minimal-webgpu-inference-for-d1-2b-with-precompiled-prompts.md)）。`@huggingface/transformers`、ランタイム用トークナイザ、WASM フォールバックは導入しない。
-- 質問セットを変更する場合は [`scripts/compile-prompts.py`](scripts/compile-prompts.py) を編集して [`src/inference/prompt-plan.json`](src/inference/prompt-plan.json) を再生成すること（JSON の手編集は禁止）。設問変更時は不確実度レア度閾値の妥当性も確認する（[ADR 0007](docs/adr/0007-creature-parameter-model-and-uncertainty-rarity.md)）。
+- 推論ランタイムの依存は **`onnxruntime-web`（`onnxruntime-web/webgpu`、WebGPU 専用）のみ** に絞る（[ADR 0006](docs/adr/0006-minimal-webgpu-inference-for-d1-2b-with-precompiled-prompts.md), [ADR 0011](docs/adr/0011-distilled-vision-head-for-mobile-webgpu.md)）。`@huggingface/transformers`、ランタイム用トークナイザ、WASM フォールバックは導入しない。
+- 質問セットを変更する場合は [`scripts/compile-prompts.py`](scripts/compile-prompts.py) を編集して [`src/inference/prompt-plan.json`](src/inference/prompt-plan.json) を再生成し、[`distill/`](distill/README.md) で [`public/models/creature_head.onnx`](public/models/creature_head.onnx) も再蒸留すること（JSON の手編集は禁止）。設問変更時は不確実度レア度閾値の妥当性も確認する（[ADR 0007](docs/adr/0007-creature-parameter-model-and-uncertainty-rarity.md)）。
 
 ## 開発・検証コマンド
 

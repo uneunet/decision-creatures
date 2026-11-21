@@ -12,16 +12,6 @@ import type {
   SubstanceType,
 } from './types';
 
-export interface DecoderTensorInputs {
-  inputIds: BigInt64Array;
-  attentionMask: BigInt64Array;
-  positionIds: BigInt64Array;
-  questionIds: BigInt64Array;
-  slotPositions: BigInt64Array;
-  seqLen: number;
-  stateLen: number;
-}
-
 /**
  * Physical hardness coefficient per substance, used for deterministic DEF derivation.
  */
@@ -34,69 +24,6 @@ export const SUBSTANCE_HARDNESS: Record<SubstanceType, number> = {
   liquid: 0.25,
   energy: 0.1,
 };
-
-/**
- * Builds the packed single-forward decoder inputs from a precompiled PromptPlan
- * and the image's dynamic token count (`gridHeightBlocks * gridWidthBlocks`).
- *
- * Matches `attention.pack_set`:
- * - State tokens (prefix + `<|image|>` * N + `<|vision_end|>`) have `question_ids = -1`
- * - Question k (1-indexed: 1..N) tokens have `question_ids = k`
- */
-export function buildDecoderInputs(plan: PromptPlan, numImageTokens: number): DecoderTensorInputs {
-  const prefixBefore = plan.prefixBeforeImage;
-  const prefixAfter = plan.prefixAfterImage;
-  const stateLen = prefixBefore.length + numImageTokens + prefixAfter.length;
-  const seqLen = stateLen + plan.suffixIds.length;
-
-  const inputIds = new BigInt64Array(seqLen);
-  const attentionMask = new BigInt64Array(seqLen);
-  const positionIds = new BigInt64Array(seqLen);
-  const questionIds = new BigInt64Array(seqLen);
-
-  let cursor = 0;
-  for (let i = 0; i < prefixBefore.length; i++) {
-    inputIds[cursor] = BigInt(prefixBefore[i]!);
-    questionIds[cursor] = -1n;
-    cursor++;
-  }
-  const imageTok = BigInt(plan.imageTokenId);
-  for (let i = 0; i < numImageTokens; i++) {
-    inputIds[cursor] = imageTok;
-    questionIds[cursor] = -1n;
-    cursor++;
-  }
-  for (let i = 0; i < prefixAfter.length; i++) {
-    inputIds[cursor] = BigInt(prefixAfter[i]!);
-    questionIds[cursor] = -1n;
-    cursor++;
-  }
-  for (let i = 0; i < plan.suffixIds.length; i++) {
-    inputIds[cursor] = BigInt(plan.suffixIds[i]!);
-    questionIds[cursor] = BigInt(plan.suffixQuestionIds[i]!);
-    cursor++;
-  }
-
-  for (let i = 0; i < seqLen; i++) {
-    attentionMask[i] = 1n;
-    positionIds[i] = BigInt(i);
-  }
-
-  const slotPositions = new BigInt64Array(plan.slotOffsets.length);
-  for (let i = 0; i < plan.slotOffsets.length; i++) {
-    slotPositions[i] = BigInt(stateLen + plan.slotOffsets[i]!);
-  }
-
-  return {
-    inputIds,
-    attentionMask,
-    positionIds,
-    questionIds,
-    slotPositions,
-    seqLen,
-    stateLen,
-  };
-}
 
 /**
  * Normalized Shannon entropy in [0, 1].
@@ -118,46 +45,51 @@ export function normalizedEntropy(probabilities: readonly number[]): number {
 }
 
 /**
- * Reads calibrated option probabilities from the decoder's `[num_slots, vocab_size]` logits.
- * Matches `prompt.py` (`readout`) and `calibration.py` (`Calibration.apply`).
+ * Reads calibrated option probabilities from the distilled head's compact
+ * 60-dim concatenated logits `[7, 6, 6, 7, 2, 7, 5, 5, 5, 5, 5]`.
+ * Post-hoc calibration temperature is baked into `creature_head.onnx`, so `temperature` defaults to `1.0`.
  */
-export function readoutLogits(plan: PromptPlan, logits: Float32Array): QuestionResult[] {
-  const vocabSize = plan.vocabSize;
+export function readoutDistilledLogits(
+  plan: PromptPlan,
+  logits: Float32Array,
+  temperature = 1.0,
+): QuestionResult[] {
+  const expectedLength = plan.questions.reduce((acc, q) => acc + q.options.length, 0);
+  if (logits.length !== expectedLength) {
+    throw new Error(
+      `Distilled head logits length mismatch: expected ${expectedLength}, got ${logits.length}`,
+    );
+  }
   const results: QuestionResult[] = [];
+  const temp = temperature > 0 ? temperature : 1.0;
+  let offset = 0;
 
   for (let qIdx = 0; qIdx < plan.questions.length; qIdx++) {
     const q = plan.questions[qIdx]!;
-    const rowOffset = qIdx * vocabSize;
-    const temp = q.temperature || 1.0;
-
-    const scores = new Array<number>(q.readoutIds.length);
+    const k = q.options.length;
+    const scores = new Array<number>(k);
     let maxScore = -Infinity;
-    for (let optIdx = 0; optIdx < q.readoutIds.length; optIdx++) {
-      const forms = q.readoutIds[optIdx]!;
-      let best = -Infinity;
-      for (let f = 0; f < forms.length; f++) {
-        const val = logits[rowOffset + forms[f]!]!;
-        if (val > best) best = val;
-      }
-      const scaled = best / temp;
+    for (let optIdx = 0; optIdx < k; optIdx++) {
+      const scaled = logits[offset + optIdx]! / temp;
       scores[optIdx] = scaled;
       if (scaled > maxScore) maxScore = scaled;
     }
+    offset += k;
 
     let expSum = 0;
-    const probs = new Array<number>(scores.length);
-    for (let i = 0; i < scores.length; i++) {
+    const probs = new Array<number>(k);
+    for (let i = 0; i < k; i++) {
       const e = Math.exp(scores[i]! - maxScore);
       probs[i] = e;
       expSum += e;
     }
-    for (let i = 0; i < probs.length; i++) {
+    for (let i = 0; i < k; i++) {
       probs[i] = probs[i]! / expSum;
     }
 
     let topIdx = 0;
     let secondIdx = -1;
-    for (let i = 1; i < probs.length; i++) {
+    for (let i = 1; i < k; i++) {
       if (probs[i]! > probs[topIdx]!) {
         secondIdx = topIdx;
         topIdx = i;
@@ -167,12 +99,12 @@ export function readoutLogits(plan: PromptPlan, logits: Float32Array): QuestionR
     }
 
     let expectedScalar: number | null = null;
-    if (q.kind === 'score' && probs.length > 1) {
+    if (q.kind === 'score' && k > 1) {
       let ev = 0;
-      for (let i = 0; i < probs.length; i++) {
+      for (let i = 0; i < k; i++) {
         ev += i * probs[i]!;
       }
-      expectedScalar = ev / (probs.length - 1);
+      expectedScalar = ev / (k - 1);
     } else if (q.kind === 'noul') {
       expectedScalar = probs[0] ?? 0;
     }

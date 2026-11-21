@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0011](./0011-distilled-vision-head-for-mobile-webgpu.md)
 
 ## Context
 

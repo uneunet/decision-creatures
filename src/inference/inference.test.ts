@@ -3,10 +3,9 @@ import { rgbaToPatches, smartResize } from './preprocess';
 import rawPlan from './prompt-plan.json';
 import {
   analyzeCreature,
-  buildDecoderInputs,
   computeRarity,
   normalizedEntropy,
-  readoutLogits,
+  readoutDistilledLogits,
 } from './readout';
 import type { PromptPlan, QuestionResult } from './types';
 
@@ -18,7 +17,7 @@ const DUMMY_METRICS = {
   decoderMs: 3,
   totalMs: 6,
   imageTokens: 64,
-  totalTokens: 1357,
+  totalTokens: 64,
   resizedWidth: 256,
   resizedHeight: 256,
 };
@@ -68,7 +67,7 @@ describe('preprocess', () => {
   });
 });
 
-describe('finalized 11-question prompt-plan & readout', () => {
+describe('finalized 11-question prompt-plan & distilled readout', () => {
   test('plan contains exactly the 11 finalized S-rank questions', () => {
     expect(plan.questions.map((q) => q.id)).toEqual([
       'substance',
@@ -83,25 +82,6 @@ describe('finalized 11-question prompt-plan & readout', () => {
       'mystique',
       'warmth',
     ]);
-  });
-
-  test('buildDecoderInputs packs state (-1) and 1-indexed question_ids cleanly', () => {
-    const numImg = 64;
-    const dec = buildDecoderInputs(plan, numImg);
-    const expectedStateLen = plan.prefixBeforeImage.length + numImg + plan.prefixAfterImage.length;
-
-    expect(dec.stateLen).toBe(expectedStateLen);
-    expect(dec.seqLen).toBe(expectedStateLen + plan.suffixIds.length);
-    expect(dec.slotPositions.length).toBe(11);
-
-    for (let i = 0; i < dec.stateLen; i++) {
-      expect(dec.questionIds[i]).toBe(-1n);
-    }
-    for (let i = 0; i < numImg; i++) {
-      expect(dec.inputIds[plan.prefixBeforeImage.length + i]).toBe(BigInt(plan.imageTokenId));
-    }
-    expect(dec.questionIds[dec.stateLen]).toBe(1n);
-    expect(dec.questionIds[dec.seqLen - 1]).toBe(11n);
   });
 
   test('normalizedEntropy is 0 for deterministic and 1 for uniform distributions', () => {
@@ -185,21 +165,41 @@ describe('finalized 11-question prompt-plan & readout', () => {
     expect(lightning.stats.spd).toBeGreaterThan(castle.stats.spd + 30);
   });
 
-  test('readoutLogits + computeRarity assigns higher rarity to higher uncertainty', () => {
-    const sharpLogits = new Float32Array(plan.questions.length * plan.vocabSize);
-    const flatLogits = new Float32Array(plan.questions.length * plan.vocabSize);
+  test('readoutDistilledLogits slices 60 compact logits into calibrated 11-question results & rarity', () => {
+    const totalDims = plan.questions.reduce((acc, q) => acc + q.options.length, 0);
+    expect(totalDims).toBe(60);
 
-    for (let i = 0; i < plan.questions.length; i++) {
-      const q = plan.questions[i]!;
-      sharpLogits[i * plan.vocabSize + q.readoutIds[0]![0]!] = 8.0;
+    const sharpLogits = new Float32Array(totalDims);
+    const flatLogits = new Float32Array(totalDims);
+
+    // Pick specific options: substance=metal, is_living=yes (idx 0), power=max
+    let offset = 0;
+    for (const q of plan.questions) {
+      if (q.id === 'substance') {
+        sharpLogits[offset + q.options.indexOf('metal')] = 8.0;
+      } else if (q.id === 'power') {
+        sharpLogits[offset + (q.options.length - 1)] = 8.0;
+      } else {
+        sharpLogits[offset] = 8.0;
+      }
+      offset += q.options.length;
     }
 
-    const sharpRarity = computeRarity(readoutLogits(plan, sharpLogits));
-    const flatRarity = computeRarity(readoutLogits(plan, flatLogits));
+    const sharpResults = readoutDistilledLogits(plan, sharpLogits);
+    expect(sharpResults.length).toBe(11);
 
+    const byId = new Map(sharpResults.map((r) => [r.id, r]));
+    expect(byId.get('substance')?.topOption).toBe('metal');
+    expect(byId.get('is_living')?.expectedScalar).toBeGreaterThan(0.99);
+    expect(byId.get('power')?.expectedScalar).toBeGreaterThan(0.99);
+
+    const sharpRarity = computeRarity(sharpResults);
+    const flatRarity = computeRarity(readoutDistilledLogits(plan, flatLogits));
     expect(sharpRarity.uncertainty).toBeLessThan(0.1);
     expect(sharpRarity.tier).toBe('common');
-    expect(flatRarity.uncertainty).toBeCloseTo(1.0, 5);
     expect(flatRarity.tier).toBe('mythic');
+    expect(flatRarity.uncertainty).toBeCloseTo(1.0, 5);
+
+    expect(() => readoutDistilledLogits(plan, new Float32Array(10))).toThrow(/length mismatch/i);
   });
 });

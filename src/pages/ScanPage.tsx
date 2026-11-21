@@ -336,7 +336,11 @@ export function ScanPage() {
           className="flex w-full max-w-[300px] items-start gap-2.5 rounded-2xl border-2 border-[#fbd685] border-b-[4px] border-b-[#f5be49] bg-[#fef3d6] px-4 py-3 text-xs font-extrabold text-[#6b4009] dark:border-[#9c6b19] dark:border-b-[#6b460d] dark:bg-[#1f1a10] dark:text-[#fbd685]"
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>このブラウザは WebGPU 非対応のためスキャンできません。Chrome / Edge 等の対応環境をご利用ください。</span>
+          <span>
+            {typeof window !== 'undefined' && !window.isSecureContext
+              ? 'HTTP 接続のため WebGPU を利用できません。HTTPS（または localhost）で開き直してください。'
+              : 'このブラウザは WebGPU 非対応のためスキャンできません。Chrome / Edge / 対応 Safari をご利用ください。'}
+          </span>
         </div>
       )}
 
@@ -507,7 +511,7 @@ export function ScanPage() {
           {stage === 'confirm' && (
             <div className="flex flex-1 flex-col justify-between px-2 pt-2 pb-1 text-center">
               <p className="text-xs leading-relaxed font-extrabold text-[var(--fg)]">
-                初回のみ AI モデル（約 1.68 GB）を端末に保存します
+                初回のみ AI モデル（約 200 MB）を端末に保存します
               </p>
               <div className="flex items-center justify-center gap-2">
                 <PopButton variant="surface" size="sm" onClick={() => setStage('crop')}>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { SubstanceType } from '../inference/types';
+import { createSafeLocalStorage } from '../lib/storage';
 import { applyDocumentSubstanceVars } from '../ui/theme';
 
 export type ThemeMode = 'light' | 'dark';
@@ -15,6 +16,15 @@ function applyDocumentTheme(mode: ThemeMode, substance: SubstanceType | null): v
   document.documentElement.classList.toggle('dark', mode === 'dark');
   applyDocumentSubstanceVars(substance, mode);
 }
+
+/** Safe localStorage wrapper that tolerates legacy plain `'light'` / `'dark'` values and private-mode errors. */
+const safeThemeStorage = createSafeLocalStorage((raw) => {
+  if (raw === 'light' || raw === 'dark') {
+    return JSON.stringify({ state: { mode: raw }, version: 0 });
+  }
+  JSON.parse(raw);
+  return raw;
+});
 
 interface ThemeState {
   mode: ThemeMode;
@@ -45,6 +55,7 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: 'decision-creatures-theme',
+      storage: createJSONStorage(() => safeThemeStorage),
       partialize: (state) => ({ mode: state.mode }),
       onRehydrateStorage: () => (state) => {
         if (state) {

@@ -88,31 +88,36 @@ export async function cropAndCompressImage(
   const canvas = document.createElement('canvas');
   canvas.width = outW;
   canvas.height = outH;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-  const metrics = computeCropMetrics(
-    img.naturalWidth,
-    img.naturalHeight,
-    vw,
-    vh,
-    crop.zoom,
-  );
-  const clamped = clampCropOffset(crop.x, crop.y, metrics.maxX, metrics.maxY);
+    const metrics = computeCropMetrics(
+      img.naturalWidth,
+      img.naturalHeight,
+      vw,
+      vh,
+      crop.zoom,
+    );
+    const clamped = clampCropOffset(crop.x, crop.y, metrics.maxX, metrics.maxY);
 
-  const ratioX = outW / vw;
-  const ratioY = outH / vh;
+    const ratioX = outW / vw;
+    const ratioY = outH / vh;
 
-  const dx = ((vw - metrics.drawnW) / 2 + clamped.x) * ratioX;
-  const dy = ((vh - metrics.drawnH) / 2 + clamped.y) * ratioY;
-  const dw = metrics.drawnW * ratioX;
-  const dh = metrics.drawnH * ratioY;
+    const dx = ((vw - metrics.drawnW) / 2 + clamped.x) * ratioX;
+    const dy = ((vh - metrics.drawnH) / 2 + clamped.y) * ratioY;
+    const dw = metrics.drawnW * ratioX;
+    const dh = metrics.drawnH * ratioY;
 
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, dx, dy, dw, dh);
 
-  return canvasToCompressedBlob(canvas);
+    return await canvasToCompressedBlob(canvas);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 function canvasToCompressedBlob(canvas: HTMLCanvasElement): Promise<Blob> {

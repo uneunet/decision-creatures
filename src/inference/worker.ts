@@ -1,12 +1,20 @@
 /// <reference lib="webworker" />
 import * as ort from 'onnxruntime-web/webgpu';
-import { clearModelCache, loadModelAssets } from './cache';
+import {
+  clearModelCache,
+  getAssetSpec,
+  prepareModelAssets,
+  type PreparedModelAssets,
+} from './cache';
 import { DEFAULT_MAX_PIXELS, preprocessImageBlob } from './preprocess';
 import rawPlan from './prompt-plan.json';
-import { analyzeCreature, buildDecoderInputs, readoutLogits } from './readout';
+import { analyzeCreature, readoutDistilledLogits } from './readout';
 import type { LoadProgress, PromptPlan, WorkerCommand, WorkerEvent } from './types';
 
 const plan = rawPlan as unknown as PromptPlan;
+
+// WebGPU EP runs GPU kernels directly; single WASM thread avoids extra pthread stacks on iOS.
+ort.env.wasm.numThreads = 1;
 
 // Cloudflare Workers Static Assets has a 25 MiB per-file limit, while
 // onnxruntime-web's asyncify WebGPU WASM binary is ~27.4 MiB.
@@ -20,7 +28,7 @@ if (import.meta.env.PROD) {
 }
 
 let visionSession: ort.InferenceSession | null = null;
-let decoderSession: ort.InferenceSession | null = null;
+let headSession: ort.InferenceSession | null = null;
 let defaultMaxPixels = DEFAULT_MAX_PIXELS;
 let lastAdapterName: string | null = null;
 
@@ -43,21 +51,45 @@ async function checkWebGpu(): Promise<string> {
     }
   ).gpu;
   if (!gpu) {
-    throw new Error('このブラウザは WebGPU に非対応です（Chrome / Edge 等の WebGPU 対応環境を使用してください）。');
+    throw new Error(
+      'このブラウザは WebGPU に非対応です（Chrome / Edge / 対応 Safari を使用してください）。',
+    );
   }
   const adapter = await gpu.requestAdapter();
   if (!adapter) {
-    throw new Error('WebGPU アダプタを取得できませんでした。ハードウェアアクセラレーションを確認してください。');
+    throw new Error(
+      'WebGPU アダプタを取得できませんでした。ハードウェアアクセラレーションを確認してください。',
+    );
   }
   const info = adapter.info;
   return [info?.vendor, info?.architecture, info?.description].filter(Boolean).join(' ') || 'WebGPU';
+}
+
+async function loadVisionSession(prepared: PreparedModelAssets): Promise<ort.InferenceSession> {
+  const visionGraph = await prepared.readAsset('visionGraph');
+  const visionData = await prepared.readAsset('visionData');
+  return ort.InferenceSession.create(visionGraph, {
+    executionProviders: ['webgpu'],
+    enableCpuMemArena: false,
+    enableMemPattern: false,
+    externalData: [{ path: getAssetSpec('visionData').externalName, data: visionData }],
+  });
+}
+
+async function loadHeadSession(prepared: PreparedModelAssets): Promise<ort.InferenceSession> {
+  const headBytes = await prepared.readAsset('distillHead');
+  return ort.InferenceSession.create(headBytes, {
+    executionProviders: ['webgpu'],
+    enableCpuMemArena: false,
+    enableMemPattern: false,
+  });
 }
 
 async function handleInit(maxPixels?: number): Promise<void> {
   if (maxPixels) {
     defaultMaxPixels = maxPixels;
   }
-  if (visionSession && decoderSession) {
+  if (visionSession && headSession) {
     post({
       type: 'ready',
       webgpuAdapter: lastAdapterName ?? undefined,
@@ -84,26 +116,37 @@ async function handleInit(maxPixels?: number): Promise<void> {
   }
 
   try {
-    // Load & cache vision_encoder_q8 + decoder_q4f16 from pinned HF revision
-    const assets = await loadModelAssets(plan.modelRepo, plan.revision, postProgress);
+    // 1. Stream official vision_encoder_q8 (196 MB) + distilled creature_head.onnx (4.85 MB) to OPFS
+    const prepared = await prepareModelAssets(plan.modelRepo, plan.revision, postProgress);
 
-    postProgress({ stage: 'initializing-vision', loadedBytes: 1, totalBytes: 1, fromCache: assets.allFromCache });
-    visionSession = await ort.InferenceSession.create(assets.visionGraph, {
-      executionProviders: ['webgpu'],
-      externalData: [{ path: 'vision_encoder_q8.onnx_data', data: assets.visionData }],
+    // 2. Initialize official vision encoder (standard Uint8Array read from OPFS)
+    postProgress({
+      stage: 'initializing-vision',
+      loadedBytes: 1,
+      totalBytes: 1,
+      fromCache: prepared.allFromCache,
     });
+    visionSession = await loadVisionSession(prepared);
 
-    postProgress({ stage: 'initializing-decoder', loadedBytes: 1, totalBytes: 1, fromCache: assets.allFromCache });
-    decoderSession = await ort.InferenceSession.create(assets.decoderGraph, {
-      executionProviders: ['webgpu'],
-      externalData: [{ path: 'decoder_q4f16.onnx_data', data: assets.decoderData }],
+    // 3. Initialize distilled 11-question CreatureDistillHead (~4.85 MB)
+    postProgress({
+      stage: 'initializing-decoder',
+      loadedBytes: 1,
+      totalBytes: 1,
+      fromCache: prepared.allFromCache,
     });
+    headSession = await loadHeadSession(prepared);
 
-    postProgress({ stage: 'ready', loadedBytes: 1, totalBytes: 1, fromCache: assets.allFromCache });
+    postProgress({
+      stage: 'ready',
+      loadedBytes: 1,
+      totalBytes: 1,
+      fromCache: prepared.allFromCache,
+    });
     post({
       type: 'ready',
       webgpuAdapter: adapterName,
-      cached: assets.allFromCache,
+      cached: prepared.allFromCache,
       initMs: Math.round(performance.now() - t0),
     });
   } catch (err) {
@@ -117,7 +160,7 @@ async function handleInit(maxPixels?: number): Promise<void> {
 }
 
 async function handleAnalyze(requestId: string, imageBlob: Blob, maxPixels?: number): Promise<void> {
-  if (!visionSession || !decoderSession) {
+  if (!visionSession || !headSession) {
     post({
       type: 'error',
       requestId,
@@ -138,69 +181,55 @@ async function handleAnalyze(requestId: string, imageBlob: Blob, maxPixels?: num
     });
     const preprocessMs = performance.now() - tPre0;
 
-    // 2. Vision encoder forward pass
+    // 2. Official vision_encoder_q8 forward pass -> [numImageTokens, 2048]
     const tVis0 = performance.now();
     const pixelTensor = new ort.Tensor('float32', preprocessed.pixelValues, preprocessed.dims);
     tensorsToDispose.push(pixelTensor);
 
-    const visionOut = await visionSession.run({ pixel_values: pixelTensor });
-    const imageFeatures = visionOut['image_features'];
-    if (!imageFeatures) {
-      throw new Error('vision_encoder did not return image_features');
+    let imageFeatures: ort.Tensor;
+    try {
+      const visionOut = await visionSession.run({ pixel_values: pixelTensor });
+      const feat = visionOut['image_features'];
+      if (!feat) {
+        throw new Error('vision_encoder did not return image_features');
+      }
+      imageFeatures = feat;
+    } catch (err) {
+      throw new Error(
+        `[vision ${preprocessed.resizedWidth}x${preprocessed.resizedHeight}/${preprocessed.numImageTokens}tok] ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     tensorsToDispose.push(imageFeatures);
     const visionMs = performance.now() - tVis0;
 
-    // 3. Build packed single-forward decoder inputs from precompiled prompt plan
-    const decInputs = buildDecoderInputs(plan, preprocessed.numImageTokens);
-
-    const inputIds = new ort.Tensor('int64', decInputs.inputIds, [1, decInputs.seqLen]);
-    const attentionMask = new ort.Tensor('int64', decInputs.attentionMask, [1, decInputs.seqLen]);
-    const positionIds = new ort.Tensor('int64', decInputs.positionIds, [1, decInputs.seqLen]);
-    const videoFeatures = new ort.Tensor('float32', new Float32Array(0), [0, plan.hiddenSize]);
-    const questionIds = new ort.Tensor('int64', decInputs.questionIds, [1, decInputs.seqLen]);
-    const slotPositions = new ort.Tensor('int64', decInputs.slotPositions, [plan.slotOffsets.length]);
-    tensorsToDispose.push(
-      inputIds,
-      attentionMask,
-      positionIds,
-      videoFeatures,
-      questionIds,
-      slotPositions,
-    );
-
-    // 4. Decoder single forward pass (reads logits at all 16 answer slots at once)
-    const tDec0 = performance.now();
-    const decoderOut = await decoderSession.run(
-      {
-        input_ids: inputIds,
-        attention_mask: attentionMask,
-        position_ids: positionIds,
-        image_features: imageFeatures,
-        video_features: videoFeatures,
-        question_ids: questionIds,
-        slot_positions: slotPositions,
-      },
-      ['logits'],
-    );
-    const logitsTensor = decoderOut['logits'];
-    if (!logitsTensor) {
-      throw new Error('decoder did not return logits');
+    // 3. Distilled CreatureDistillHead forward pass -> [60] calibrated logits
+    const tHead0 = performance.now();
+    let logitsTensor: ort.Tensor;
+    try {
+      const headOut = await headSession.run({ image_features: imageFeatures });
+      const out = headOut['logits'];
+      if (!out) {
+        throw new Error('creature_head did not return logits');
+      }
+      logitsTensor = out;
+    } catch (err) {
+      throw new Error(
+        `[head ${preprocessed.numImageTokens}tok] ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     tensorsToDispose.push(logitsTensor);
-
     const logitsData = (await logitsTensor.getData()) as Float32Array;
-    const decoderMs = performance.now() - tDec0;
+    const headMs = performance.now() - tHead0;
 
-    // 5. Calibrated softmax readout + uncertainty-based rarity + creature synthesis
-    const questionResults = readoutLogits(plan, logitsData);
+    // 4. Softmax readout (calibration temperature is baked into creature_head.onnx) + creature synthesis
+    const questionResults = readoutDistilledLogits(plan, logitsData);
     const analysis = analyzeCreature(questionResults, {
       preprocessMs: Math.round(preprocessMs),
       visionMs: Math.round(visionMs),
-      decoderMs: Math.round(decoderMs),
+      decoderMs: Math.round(headMs),
       totalMs: Math.round(performance.now() - tTotal0),
       imageTokens: preprocessed.numImageTokens,
-      totalTokens: decInputs.seqLen,
+      totalTokens: preprocessed.numImageTokens,
       resizedWidth: preprocessed.resizedWidth,
       resizedHeight: preprocessed.resizedHeight,
     });
@@ -225,13 +254,23 @@ async function handleAnalyze(requestId: string, imageBlob: Blob, maxPixels?: num
 }
 
 async function disposeSessions(): Promise<void> {
-  if (visionSession) {
-    await visionSession.release();
-    visionSession = null;
+  const vis = visionSession;
+  const head = headSession;
+  visionSession = null;
+  headSession = null;
+  if (vis) {
+    try {
+      await vis.release();
+    } catch {
+      // Ignore release errors when WebGPU device is already lost
+    }
   }
-  if (decoderSession) {
-    await decoderSession.release();
-    decoderSession = null;
+  if (head) {
+    try {
+      await head.release();
+    } catch {
+      // Ignore release errors when WebGPU device is already lost
+    }
   }
 }
 

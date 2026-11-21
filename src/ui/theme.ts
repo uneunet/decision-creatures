@@ -257,7 +257,7 @@ export function formatLoadStageLabel(
     case 'initializing-vision':
       return 'WebGPU を初期化中 (Vision)...';
     case 'initializing-decoder':
-      return 'WebGPU を初期化中 (Decoder)...';
+      return 'WebGPU を初期化中 (Head)...';
     case 'ready':
       return '準備完了';
   }

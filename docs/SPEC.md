@@ -37,7 +37,7 @@
 | ルーティング | TanStack Router (`@tanstack/react-router`) | 型安全な SPA ルーティング・Search Params 管理（コードベース定義、[ADR 0009](adr/0009-client-routing-with-tanstack-router.md)） |
 | 状態管理 | Zustand | UI 状態、推論ステート、モーダル・選択状態の管理 |
 | ローカル DB | Dexie.js | IndexedDB を用いたクリーチャー・画像 Blob の永続化 |
-| AI 推論 | LiquidAI/d1-2B (`d1-2B-ONNX`) + `onnxruntime-web/webgpu` + Web Worker | WebGPU 専用・単一依存の最小ブラウザ内推論 |
+| AI 推論 | LiquidAI/d1-2B Vision (`vision_encoder_q8`) + 蒸留ヘッド (`creature_head.onnx`) + `onnxruntime-web/webgpu` + Web Worker | WebGPU 専用・単一依存・モバイル対応の軽量ブラウザ内推論（計約 201 MB、[ADR 0011](adr/0011-distilled-vision-head-for-mobile-webgpu.md)） |
 | スタイリング / アニメーション | Tailwind CSS + Motion | フラットポップな独自デザインシステムと滑らかなモーション（[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md)） |
 | UI プリミティブ / アイコン | Base UI (`@base-ui/react`) + `lucide-react` | ヘッドレスコンポーネント基盤＋統一アイコンセットで全見た目を独自フラットポップへ統一（[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md), [ADR 0010](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)） |
 | ホスティング | Cloudflare Workers | v1 は静的配信、v2 以降は API / バトル処理も担う |
@@ -69,9 +69,9 @@
 [Web Worker]
   onnxruntime-web/webgpu (WebGPU 専用)
    ├── 自前画像前処理 (Lfm3VlImageProcessor 互換・依存ゼロ)
-   ├── 事前コンパイル済みプロンプト JSON (トークナイザ不要)
-   └── LiquidAI/d1-2B-ONNX (decoder_q4f16 + vision_encoder_q8)
-         └── HF CDN (リビジョン固定) + Cache API
+   ├── 11 設問定義 JSON (`prompt-plan.json`・トークナイザ不要)
+   ├── 公式 `vision_encoder_q8` (196 MB, HF CDN リビジョン固定 + OPFS キャッシュ)
+   └── 蒸留ヘッド `creature_head.onnx` (4.85 MB, 静的配信 + OPFS キャッシュ)
 ```
 
 ### 4.2 v2 以降（バトル実装時）の構成拡張
@@ -89,15 +89,16 @@
 
 ### 5.1 AI 推論・クリーチャー生成（v1）
 
-- **使用モデル**: `LiquidAI/d1-2B`（公式 ONNX: `LiquidAI/d1-2B-ONNX`、特定コミット SHA 固定）。
-  - WebGPU 推奨ペアである **`decoder_q4f16`（1.49 GB）+ `vision_encoder_q8`（187 MB）** の計約 1.68 GB に 1 本化する（1 行 8,192 トークン未満）。
-- **実行方式（WebGPU 専用・最小依存）**:
+- **使用モデル（[ADR 0011](adr/0011-distilled-vision-head-for-mobile-webgpu.md)）**:
+  - **Vision Encoder**: 公式 `LiquidAI/d1-2B-ONNX`（特定コミット SHA 固定）の **`vision_encoder_q8`（196 MB）** を Hugging Face CDN から直接取得する。
+  - **蒸留ヘッド**: `LiquidAI/d1-2B` の S ランク 11 設問ソフト確率分布（完全ランダム CC12M 10,000 枚）を KL 蒸留した **`creature_head.onnx`（4.85 MB、校正温度焼き込み済み）** をアプリ静的アセット（`/models/creature_head.onnx`）として配信する（合計約 201 MB）。
+- **実行方式（WebGPU 専用・最小依存・モバイル対応）**:
   - 推論処理とモデル管理はすべて専用 **Web Worker** 内で **`onnxruntime-web/webgpu`** のみを用いて実行する（`@huggingface/transformers` 等の追加推論ライブラリは導入しない）。
   - **WebGPU 専用**とし、WASM フォールバックは実装しない。WebGPU 非対応環境では起動時に非対応である旨を案内する。
-  - `LiquidAI/d1-2B` の単一フォワードパス（生成トークン 0、1 forward 最大 16 問）により、画像を 1 回エンコードして全設問の選択肢確率を取得する。
-- **事前コンパイル済みプロンプトと後処理**:
-  - 確定した **S ランク 11 設問**（英語、`choice` 4 問 + `noul` 1 問 + `score` 6 問、計約 1,287 トークン）のトークン ID 列・`question_ids`・`slot_positions` 相対位置・`readout_ids`・`calibration` 温度を、開発時に公式 Python コードで静的 JSON（[`src/inference/prompt-plan.json`](../src/inference/prompt-plan.json)）に事前コンパイルして同梱する。
-  - ランタイムは `tokenizer.json`（17 MB）を持たず、画像の `<|image|>`（ID `125030`）個数に応じてトークン列を結合し、出力 `logits` から対象トークンを引いて温度付き softmax を計算するだけに留める。
+  - `vision_encoder_q8` が出力する空間パッチ特徴 `[N, 2048]` を `creature_head.onnx` へ 1 パス入力し、S ランク 11 設問（計 60 選択肢）の校正済みロジットを一括取得する。
+- **11 設問定義と後処理**:
+  - 確定した **S ランク 11 設問**（英語、`choice` 4 問 + `noul` 1 問 + `score` 6 問、計 60 選択肢）の定義は [`src/inference/prompt-plan.json`](../src/inference/prompt-plan.json)（[`scripts/compile-prompts.py`](../scripts/compile-prompts.py) で生成）を正とする。
+  - ランタイムはトークナイザを持たず、`creature_head.onnx` が出力する 60 次元ロジットを 11 設問ごとにスライスして softmax 読み出しを行う。
 - **タイプ・ステータス・レア度の決定仕様（[ADR 0007](adr/0007-creature-parameter-model-and-uncertainty-rarity.md)）**:
   - **主タイプ（バトル相性軸）**: `substance`（7 材質: `flesh` / `botanical` / `metal` / `stone` / `liquid` / `fabric` / `energy`）。確率 2 位が 20% 以上なら複合タイプとする。
   - **副タイプ（環境）**: `biome`（6 環境: `wild` / `aquatic` / `urban` / `sky` / `abyss` / `cosmos`）。
@@ -109,14 +110,14 @@
     - `DEF` ← `mass_5`（45%）+ 密度 `(mass_5 - size_7 + 1)/2`（25%）+ `substance` 確率重み付け硬度（30%）
   - **レア度（不確実度算出）**: 11 問の正規化シャノンエントロピー $H_{\text{norm}}$ から合成不確実度 $U = 0.6 H_{\text{type}} + 0.4 H_{\text{scalar}}$ を算出し、`COMMON` / `UNCOMMON` / `RARE` / `EPIC` / `MYTHIC` の 5 段階を決定する。
 - **モデル配信とキャッシュ**:
-  - v1 では Hugging Face CDN から特定リビジョン（コミット SHA 固定）を直接取得し、ブラウザの **Cache API**（モデルリビジョンを含むキャッシュキー）へ保存する。あわせて `navigator.storage.persist()` を要求する。
+  - `vision_encoder_q8` は Hugging Face CDN（リビジョン固定）、`creature_head.onnx` は同一オリジン静的配信から取得し、ブラウザの **OPFS**（ストリーミング保存＋標準 `File.arrayBuffer()` 読込、OPFS 非対応時はインメモリ取得）へキャッシュする。あわせて `navigator.storage.persist()` の要求と旧キャッシュの自動掃除を行う。
   - ダウンロード進捗・セッション初期化状態・エラー（WebGPU 非対応・容量不足・ネットワーク失敗）を Zustand 経由で UI に反映する。
 
 ### 5.2 画像入力・スキャン体験（v1）
 
 - ファイル選択、ドラッグ＆ドロップ、クリップボード貼り付け、モバイル等のカメラ入力に対応する（`/scan`）。
 - 推論前にカード写真枠内でドラッグ／ズームのクロップ調整を行い、切り出した画像を軽量化して推論入力および保存用 `imageBlob` として利用する（[ADR 0010](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)）。
-- 初回かつ Cache API 未保存時のみ、約 1.68 GB のモデル保存を一言確認してからカード枠内でダウンロード進捗を表示する。
+- 初回かつローカルキャッシュ未保存時のみ、約 200 MB のモデル保存を一言確認してからカード枠内でダウンロード進捗を表示する。
 - 推論用前処理は Web Worker 内で `Lfm3VlImageProcessor` 互換処理（`smart_resize`・リサイズ・`[-1, 1]` 正規化・パッチ化）をブラウザ標準 API のみで実行する。
 - v1 では画像は外部サーバーへ送信されず、ユーザーの端末内のみで処理される。
 
@@ -164,8 +165,9 @@ IndexedDB 上に以下のストアを定義する（詳細スキーマおよび 
 - [ADR 0003: ブラウザ内推論に LFM3-d1-2B と ONNX Runtime + Web Worker を採用する](adr/0003-browser-inference-with-lfm3-d1-2b-and-onnx-runtime-web-worker.md)（Superseded by ADR 0006）
 - [ADR 0004: フロントエンド基盤に Vite・React・Zustand・Dexie.js を採用する](adr/0004-frontend-stack-vite-react-zustand-dexie.md)
 - [ADR 0005: UI 構築に Tailwind CSS・Motion を主軸とし shadcn/ui を最小限に利用する](adr/0005-ui-styling-with-tailwind-motion-and-minimal-shadcn.md)（Superseded by ADR 0008）
-- [ADR 0006: LiquidAI/d1-2B を onnxruntime-web/webgpu 単体と事前コンパイル済みプロンプトで実行する](adr/0006-minimal-webgpu-inference-for-d1-2b-with-precompiled-prompts.md)
+- [ADR 0006: LiquidAI/d1-2B を onnxruntime-web/webgpu 単体と事前コンパイル済みプロンプトで実行する](adr/0006-minimal-webgpu-inference-for-d1-2b-with-precompiled-prompts.md)（Superseded by ADR 0011）
 - [ADR 0007: S ランク 11 設問による材質・環境タイプ体系、物理導出ステータス、不確実度レア度を採用する](adr/0007-creature-parameter-model-and-uncertainty-rarity.md)
 - [ADR 0008: ヘッドレス UI 基盤に Base UI (`@base-ui/react`) を採用し、フラットポップなデザインシステムで統一する](adr/0008-headless-base-ui-and-flat-pop-design-system.md)
 - [ADR 0009: クライアントサイド SPA ルーティングに TanStack Router（コードベース定義）を採用する](adr/0009-client-routing-with-tanstack-router.md)
 - [ADR 0010: v1 UI フローをコレクション起点（`/`）・クロップ付きスキャン（`/scan`）・表裏 PNG 共有＋ライト／ダーク対応で確定する](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)
+- [ADR 0011: 公式 Vision Encoder + KL 蒸留軽量ヘッドとシンプルな OPFS キャッシュでモバイル WebGPU 推論を実現する](adr/0011-distilled-vision-head-for-mobile-webgpu.md)

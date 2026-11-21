@@ -27,9 +27,9 @@ import {
 import { formatLoadStageLabel } from '../ui/theme';
 
 const PIXEL_PRESETS = [
+  { label: '128', pixels: 131_072 },
   { label: '256', pixels: 262_144 },
   { label: '512', pixels: 524_288 },
-  { label: '1024', pixels: 1_048_576 },
 ] as const;
 
 function formatMB(bytes: number): string {
@@ -222,12 +222,12 @@ export function RootLayout() {
               </div>
 
               <div className="flex flex-col gap-1 rounded-2xl bg-[var(--surface-sub)] p-3 font-mono text-[11px] font-bold">
-                <div className="text-[var(--fg)]">LiquidAI/d1-2B-ONNX · q4f16 · 11Q</div>
+                <div className="text-[var(--fg)]">LiquidAI/d1-2B Vision (q8) + Distilled Head · 11Q</div>
                 <div className="text-[var(--fg-muted)]">
                   WebGPU: {webgpuSupported ? (webgpuAdapter ?? '対応') : '非対応'}
                 </div>
                 <div className="text-[var(--fg-muted)]">
-                  キャッシュ: {cacheAvailable ? '保存済み (約 1.68 GB)' : '未保存'}
+                  キャッシュ: {cacheAvailable ? '保存済み (約 200 MB)' : '未保存'}
                   {initMs !== null ? ` · ${initMs}ms ${cached ? '(cache)' : '(net)'}` : ''}
                 </div>
               </div>

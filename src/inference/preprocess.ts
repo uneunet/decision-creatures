@@ -1,7 +1,7 @@
 import type { PreprocessedImage } from './types';
 
 export const DEFAULT_MIN_PIXELS = 65_536;
-export const DEFAULT_MAX_PIXELS = 524_288; // ~512 image tokens (fast WebGPU prefill)
+export const DEFAULT_MAX_PIXELS = 262_144; // ~256 image tokens (matches distilled head training & fast mobile WebGPU)
 export const PATCH_SIZE = 16;
 export const MERGE_SIZE = 2;
 export const TEMPORAL_PATCH_SIZE = 2;
@@ -135,16 +135,22 @@ export async function preprocessImageBlob(
     );
 
     const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('Failed to acquire 2D context on OffscreenCanvas');
-    }
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    const imageData = ctx.getImageData(0, 0, width, height);
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Failed to acquire 2D context on OffscreenCanvas');
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, width, height);
 
-    return rgbaToPatches(imageData.data, width, height);
+      return rgbaToPatches(imageData.data, width, height);
+    } finally {
+      // Explicitly release Safari WebKit canvas backing store
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   } finally {
     bitmap.close();
   }
