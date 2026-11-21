@@ -1,1 +1,76 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "LINE Seed JP", "Hiragino Maru Gothic ProN", "Rounded Mplus 1c", ui-rounded, -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root {
+  --surface: #ffffff;
+  --surface-sub: #f4f3ef;
+  --fg: #1f2026;
+  --fg-muted: #7b7e8a;
+  --track: #eff0f3;
+  --backdrop: rgba(24, 24, 30, 0.42);
+  --attr-pop: #1cb0f6;
+  --attr-pop-dark: #0f8ac7;
+  --attr-pastel: #f4f3ef;
+  --attr-stroke: #dcd9cf;
+  --attr-lip: #c5c1b4;
+  --attr-ink: #1f2026;
+}
+
+:root.dark {
+  --surface: #20222a;
+  --surface-sub: #181a21;
+  --fg: #f4f4f6;
+  --fg-muted: #9397a6;
+  --track: #2c2f3a;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --attr-pastel: #15161b;
+  --attr-stroke: #3f4455;
+  --attr-lip: #2b2f3d;
+  --attr-ink: #f4f4f6;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  background-color: var(--attr-pastel);
+  color: var(--fg);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+#root {
+  isolation: isolate;
+}
+
+/* 3D card flip utilities */
+.perspective-card {
+  perspective: 1100px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-face-front {
+  transform: rotateY(0deg) translateZ(1px);
+}
+
+.card-face-back {
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

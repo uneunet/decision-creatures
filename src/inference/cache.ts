@@ -59,6 +59,23 @@ export async function clearModelCache(revision: string): Promise<void> {
   }
 }
 
+export async function hasCachedModelAssets(repo: string, revision: string): Promise<boolean> {
+  if (typeof caches === 'undefined') return false;
+  try {
+    const cacheName = getCacheName(revision);
+    const has = await caches.has(cacheName);
+    if (!has) return false;
+    const cache = await caches.open(cacheName);
+    for (const asset of MODEL_ASSETS) {
+      const match = await cache.match(getAssetUrl(repo, revision, asset.relPath));
+      if (!match || !match.ok) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface LoadedModelBlobs {
   visionGraph: Uint8Array;
   visionData: Blob;

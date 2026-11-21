@@ -8,9 +8,21 @@ import type { LoadProgress, PromptPlan, WorkerCommand, WorkerEvent } from './typ
 
 const plan = rawPlan as unknown as PromptPlan;
 
+// Cloudflare Workers Static Assets has a 25 MiB per-file limit, while
+// onnxruntime-web's asyncify WebGPU WASM binary is ~27.4 MiB.
+// Load only the matching-version .wasm binary from jsDelivr in production builds
+// so Vite's bundled .mjs glue is reused without an extra dynamic import.
+if (import.meta.env.PROD) {
+  const version = ort.env.versions.web ?? '1.31.1';
+  ort.env.wasm.wasmPaths = {
+    wasm: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort-wasm-simd-threaded.asyncify.wasm`,
+  };
+}
+
 let visionSession: ort.InferenceSession | null = null;
 let decoderSession: ort.InferenceSession | null = null;
 let defaultMaxPixels = DEFAULT_MAX_PIXELS;
+let lastAdapterName: string | null = null;
 
 function post(event: WorkerEvent): void {
   self.postMessage(event);
@@ -46,7 +58,12 @@ async function handleInit(maxPixels?: number): Promise<void> {
     defaultMaxPixels = maxPixels;
   }
   if (visionSession && decoderSession) {
-    post({ type: 'ready', cached: true, initMs: 0 });
+    post({
+      type: 'ready',
+      webgpuAdapter: lastAdapterName ?? undefined,
+      cached: true,
+      initMs: 0,
+    });
     return;
   }
 
@@ -56,6 +73,7 @@ async function handleInit(maxPixels?: number): Promise<void> {
   let adapterName: string;
   try {
     adapterName = await checkWebGpu();
+    lastAdapterName = adapterName;
   } catch (err) {
     post({
       type: 'error',
@@ -217,8 +235,7 @@ async function disposeSessions(): Promise<void> {
   }
 }
 
-self.onmessage = async (event: MessageEvent<WorkerCommand>) => {
-  const cmd = event.data;
+async function dispatchCommand(cmd: WorkerCommand): Promise<void> {
   switch (cmd.type) {
     case 'init':
       await handleInit(cmd.maxPixels);
@@ -235,4 +252,19 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>) => {
       await disposeSessions();
       break;
   }
+}
+
+let commandQueue: Promise<void> = Promise.resolve();
+
+self.onmessage = (event: MessageEvent<WorkerCommand>) => {
+  const cmd = event.data;
+  commandQueue = commandQueue
+    .then(() => dispatchCommand(cmd))
+    .catch((err) => {
+      post({
+        type: 'error',
+        code: 'INFERENCE_FAILED',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
 };

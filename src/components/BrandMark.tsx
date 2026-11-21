@@ -1,0 +1,75 @@
+const SCALLOP_LIP =
+  'M46.9 36.9 Q48.5 35.6 50.1 36.9 Q51.8 38.1 53.8 38.1 Q55.9 38.0 56.5 40.0 Q57.1 42.0 58.8 43.1 Q60.5 44.3 59.8 46.3 Q59.1 48.2 59.8 50.1 Q60.5 52.1 58.8 53.3 Q57.1 54.4 56.5 56.4 Q55.9 58.4 53.8 58.3 Q51.8 58.3 50.1 59.5 Q48.5 60.8 46.9 59.5 Q45.2 58.3 43.2 58.3 Q41.1 58.4 40.5 56.4 Q39.9 54.4 38.2 53.3 Q36.5 52.1 37.2 50.1 Q37.9 48.2 37.2 46.3 Q36.5 44.3 38.2 43.1 Q39.9 42.0 40.5 40.0 Q41.1 38.0 43.2 38.1 Q45.2 38.1 46.9 36.9 Z';
+const SCALLOP_OUTER =
+  'M46.9 35.2 Q48.5 33.9 50.1 35.2 Q51.8 36.4 53.8 36.4 Q55.9 36.3 56.5 38.3 Q57.1 40.3 58.8 41.4 Q60.5 42.6 59.8 44.6 Q59.1 46.5 59.8 48.4 Q60.5 50.4 58.8 51.6 Q57.1 52.7 56.5 54.7 Q55.9 56.7 53.8 56.6 Q51.8 56.6 50.1 57.8 Q48.5 59.1 46.9 57.8 Q45.2 56.6 43.2 56.6 Q41.1 56.7 40.5 54.7 Q39.9 52.7 38.2 51.6 Q36.5 50.4 37.2 48.4 Q37.9 46.5 37.2 44.6 Q36.5 42.6 38.2 41.4 Q39.9 40.3 40.5 38.3 Q41.1 36.3 43.2 36.4 Q45.2 36.4 46.9 35.2 Z';
+const SCALLOP_INNER =
+  'M47.2 37.7 Q48.5 36.7 49.8 37.7 Q51.0 38.7 52.6 38.6 Q54.3 38.6 54.7 40.1 Q55.1 41.7 56.5 42.6 Q57.8 43.5 57.3 45.0 Q56.7 46.5 57.3 48.0 Q57.8 49.5 56.5 50.4 Q55.1 51.3 54.7 52.9 Q54.3 54.4 52.6 54.4 Q51.0 54.3 49.8 55.3 Q48.5 56.3 47.2 55.3 Q46.0 54.3 44.4 54.4 Q42.7 54.4 42.3 52.9 Q41.9 51.3 40.5 50.4 Q39.2 49.5 39.7 48.0 Q40.3 46.5 39.7 45.0 Q39.2 43.5 40.5 42.6 Q41.9 41.7 42.3 40.1 Q42.7 38.6 44.4 38.6 Q46.0 38.7 47.2 37.7 Z';
+
+export interface BrandMarkProps {
+  className?: string;
+  /** When true, adapts the card body color to the active creature attribute theme. */
+  dynamic?: boolean;
+}
+
+export function BrandMark({ className, dynamic = false }: BrandMarkProps) {
+  const bodyFill = dynamic ? 'var(--attr-pop)' : '#1cb0f6';
+  const lipFill = dynamic ? 'var(--attr-pop-dark)' : '#0f8ac7';
+
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      fill="none"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect
+        x="4"
+        y="9"
+        width="52"
+        height="51"
+        rx="15"
+        style={{ fill: lipFill, transition: 'fill 200ms ease' }}
+      />
+      <rect
+        x="4"
+        y="4"
+        width="52"
+        height="50"
+        rx="15"
+        style={{ fill: bodyFill, transition: 'fill 200ms ease' }}
+      />
+      <rect x="10" y="10" width="40" height="31" rx="9" fill="#ffffff" />
+      <rect x="19.5" y="17.5" width="7" height="12.5" rx="3.5" fill="#1f2026" />
+      <circle cx="21.9" cy="21" r="1.7" fill="#ffffff" />
+      <rect x="33.5" y="17.5" width="7" height="12.5" rx="3.5" fill="#1f2026" />
+      <circle cx="35.9" cy="21" r="1.7" fill="#ffffff" />
+      <ellipse cx="16.2" cy="30.5" rx="2.6" ry="1.6" fill="#ff9eb5" />
+      <ellipse cx="43.8" cy="30.5" rx="2.6" ry="1.6" fill="#ff9eb5" />
+      <path
+        d="M27.2 29.8 Q30 33.2 32.8 29.8"
+        stroke="#1f2026"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <rect
+        x="11"
+        y="45"
+        width="16"
+        height="4.5"
+        rx="2.25"
+        fill="#ffffff"
+        fillOpacity="0.82"
+      />
+      <g transform="rotate(-7 48.5 46.5)">
+        <path d={SCALLOP_LIP} fill="#b45309" fillOpacity="0.28" />
+        <path d={SCALLOP_OUTER} fill="#ffffff" />
+        <path d={SCALLOP_INNER} fill="#f59e0b" />
+        <path
+          d="M48.5 41.3 L49.9 45.1 L53.7 46.5 L49.9 47.9 L48.5 51.7 L47.1 47.9 L43.3 46.5 L47.1 45.1 Z"
+          fill="#ffffff"
+        />
+      </g>
+    </svg>
+  );
+}
