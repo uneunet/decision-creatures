@@ -63,9 +63,10 @@ bun run deploy
 
 ## ライセンス・帰属表示
 
-- **本リポジトリのソースコードおよびオリジナルアセット**: [MIT License](LICENSE)（Copyright (c) 2026 yank.nvim）
+- **本リポジトリのソースコード**: [GNU Affero General Public License v3.0 (`AGPL-3.0-only`)](LICENSE)（Copyright (c) 2026 yank.nvim）
+- **オリジナル画像・ブランドアセット**（`public/logo.svg`, `public/favicon.svg`, `public/apple-touch-icon.png`, `public/ogp.png` およびロゴアートワーク）: **[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)**（Creative Commons Attribution-NonCommercial 4.0 International / AGPLv3 の対象外）
 - **AI モデル重み（[`LiquidAI/d1-2B-ONNX`](https://huggingface.co/LiquidAI/d1-2B-ONNX)）**: **[LFM Open License v1.0](https://www.liquid.ai/lfm-license)**  
-  `vision_encoder_q8` のモデル重みは本リポジトリに含まれておらず、実行時にユーザーのブラウザから Hugging Face 経由で取得されます。また同梱の [`public/models/creature_head.onnx`](public/models/creature_head.onnx)（4.85 MB）は `LiquidAI/d1-2B` を教師モデルとしてオフライン蒸留した軽量ヘッドです。Liquid AI 由来モデルの利用は MIT ライセンスの対象外であり、年商 1,000 万ドル（$10M USD）以上の営利組織での商用利用には Liquid AI との別途ライセンス契約が必要です。
+  `vision_encoder_q8` のモデル重みは本リポジトリに含まれておらず、実行時にユーザーのブラウザから Hugging Face 経由で取得されます。また同梱の [`public/models/creature_head.onnx`](public/models/creature_head.onnx)（4.85 MB）は `LiquidAI/d1-2B` を教師モデルとしてオフライン蒸留した軽量ヘッドです。Liquid AI 由来モデルの利用は AGPLv3 および CC BY-NC 4.0 の対象外であり、年商 1,000 万ドル（$10M USD）以上の営利組織での商用利用には Liquid AI との別途ライセンス契約が必要です。
   > Built with LiquidAI/d1-2B under LFM Open License v1.0.
 - **Web フォント（[LINE Seed JP](https://seed.line.me/index_jp.html)）**: **[SIL Open Font License 1.1](https://openfontlicense.org/)**（Google Fonts 経由で読み込み）
 
