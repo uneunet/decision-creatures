@@ -34,11 +34,12 @@
 | 領域 | 採用技術 | 役割・方針 |
 | --- | --- | --- |
 | ビルド / UI | Vite + React | SPA 構築・高速な開発体験 |
+| ルーティング | TanStack Router (`@tanstack/react-router`) | 型安全な SPA ルーティング・Search Params 管理（コードベース定義、[ADR 0009](adr/0009-client-routing-with-tanstack-router.md)） |
 | 状態管理 | Zustand | UI 状態、推論ステート、モーダル・選択状態の管理 |
 | ローカル DB | Dexie.js | IndexedDB を用いたクリーチャー・画像 Blob の永続化 |
 | AI 推論 | LiquidAI/d1-2B (`d1-2B-ONNX`) + `onnxruntime-web/webgpu` + Web Worker | WebGPU 専用・単一依存の最小ブラウザ内推論 |
-| スタイリング / アニメーション | Tailwind CSS + Motion | 独自スタイリング主軸の高いデザイン表現と滑らかなモーション |
-| UI プリミティブ | shadcn/ui | 必要な箇所のみ限定使用（アクセシビリティが必要なダイアログ等） |
+| スタイリング / アニメーション | Tailwind CSS + Motion | フラットポップな独自デザインシステムと滑らかなモーション（[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md)） |
+| UI プリミティブ / アイコン | Base UI (`@base-ui/react`) + `lucide-react` | ヘッドレスコンポーネント基盤＋統一アイコンセットで全見た目を独自フラットポップへ統一（[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md), [ADR 0010](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)） |
 | ホスティング | Cloudflare Workers | v1 は静的配信、v2 以降は API / バトル処理も担う |
 | サーバー DB / ストレージ（v2+） | Cloudflare D1 / Cloudflare R2 | バトル・共有用データ（D1）と画像アセット（R2）の永続化 |
 
@@ -47,7 +48,7 @@
 ## 3. UI / デザイン原則
 
 - **レイアウトに説明させる**: 不要なセカンダリラベル、冗長な注釈、説明テキストを置かず、視覚的階層・タイポグラフィ・余白・モーションによって役割が直感的に伝わる設計にする。
-- **独自スタイリング優先**: `shadcn/ui` の既製スタイルに依存せず、Tailwind CSS と Motion による世界観のある独自ビジュアルを優先する。`shadcn/ui` はアクセシビリティやフォーカス制御が複雑な一部プリミティブに限定して利用する。
+- **独自スタイリングとヘッドレス UI 基盤の徹底**: 既製スタイルに依存せず、`@base-ui/react`（Base UI）のヘッドレスプリミティブ＋Tailwind CSS＋Motion で全コンポーネントの雰囲気を統一する（[ADR 0008](adr/0008-headless-base-ui-and-flat-pop-design-system.md)）。ぼかしドロップシャドウ・グロー・グラデーションを排したフラットポップ表現（単色面・属性連動カラー・下端リップ・ギザギザ切手シール風レア度表記）を基準とする。
 - **非ブロッキング体験**: モデルロードや推論中も UI アニメーションや操作応答性を維持する。
 
 ---
@@ -58,9 +59,9 @@
 
 ```text
 [Browser Main Thread]
-  React + Vite
+  React + Vite + TanStack Router
    ├── Zustand (UI / Inference / Collection Store)
-   ├── Tailwind CSS + Motion (+ minimal shadcn/ui)
+   ├── Tailwind CSS + Motion + Base UI (@base-ui/react)
    └── Dexie.js (IndexedDB: Creatures, Image Blobs)
          ▲
          │ postMessage (Image / Inference Result / Progress)
@@ -111,17 +112,20 @@
   - v1 では Hugging Face CDN から特定リビジョン（コミット SHA 固定）を直接取得し、ブラウザの **Cache API**（モデルリビジョンを含むキャッシュキー）へ保存する。あわせて `navigator.storage.persist()` を要求する。
   - ダウンロード進捗・セッション初期化状態・エラー（WebGPU 非対応・容量不足・ネットワーク失敗）を Zustand 経由で UI に反映する。
 
-### 5.2 画像入力（v1）
+### 5.2 画像入力・スキャン体験（v1）
 
-- ファイル選択、ドラッグ＆ドロップ、モバイル等のカメラ入力に対応する。
-- 保存用の表示画像データ（Blob）を生成してローカル DB へ保持する。
+- ファイル選択、ドラッグ＆ドロップ、クリップボード貼り付け、モバイル等のカメラ入力に対応する（`/scan`）。
+- 推論前にカード写真枠内でドラッグ／ズームのクロップ調整を行い、切り出した画像を軽量化して推論入力および保存用 `imageBlob` として利用する（[ADR 0010](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)）。
+- 初回かつ Cache API 未保存時のみ、約 1.68 GB のモデル保存を一言確認してからカード枠内でダウンロード進捗を表示する。
 - 推論用前処理は Web Worker 内で `Lfm3VlImageProcessor` 互換処理（`smart_resize`・リサイズ・`[-1, 1]` 正規化・パッチ化）をブラウザ標準 API のみで実行する。
 - v1 では画像は外部サーバーへ送信されず、ユーザーの端末内のみで処理される。
 
-### 5.3 コレクション（v1）
+### 5.3 コレクション・詳細・共有（v1）
 
-- 生成したクリーチャーを Dexie.js（IndexedDB）へ保存する。
-- 一覧表示（グリッド / カード）、タイプ別フィルタ・ソート、詳細ビュー、削除機能を提供する。
+- `/` をコレクション起点とし、生成したクリーチャーを Dexie.js（IndexedDB）へ自動保存してコンパクト S1 カードのレスポンシブグリッド（スマホ 2 列／PC 3〜4 列）で表示する（0 件時はスキャン枠を表示）。
+- 属性ピル横並び 1 行＋レア度／ソート用ポップオーバー（Search Params `?type=&rarity=&sort=` 同期）を提供する。
+- `/creatures/$id` でフルサイズ S1 カードの 3D 反転・11 設問スコア詳細・名前変更・削除確認に加え、表面＋裏面を 2 枚並べた PNG 画像のクライアント書き出し（画像保存・Web Share API 共有）を提供する。
+- ライト／ダークテーマ切替に対応し、全画面でヘッダーはロゴ＋`≡` メニュー固定とする。
 - コレクション状態はアプリ再起動後もローカルに保持される。
 
 ### 5.4 バトル機能（v2 以降）
@@ -159,6 +163,9 @@ IndexedDB 上に以下のストアを定義する（詳細スキーマおよび 
 - [ADR 0002: v1 はブラウザ完結とし、Cloudflare Workers を基盤に段階的拡張する](adr/0002-client-first-architecture-with-cloudflare-workers.md)
 - [ADR 0003: ブラウザ内推論に LFM3-d1-2B と ONNX Runtime + Web Worker を採用する](adr/0003-browser-inference-with-lfm3-d1-2b-and-onnx-runtime-web-worker.md)（Superseded by ADR 0006）
 - [ADR 0004: フロントエンド基盤に Vite・React・Zustand・Dexie.js を採用する](adr/0004-frontend-stack-vite-react-zustand-dexie.md)
-- [ADR 0005: UI 構築に Tailwind CSS・Motion を主軸とし shadcn/ui を最小限に利用する](adr/0005-ui-styling-with-tailwind-motion-and-minimal-shadcn.md)
+- [ADR 0005: UI 構築に Tailwind CSS・Motion を主軸とし shadcn/ui を最小限に利用する](adr/0005-ui-styling-with-tailwind-motion-and-minimal-shadcn.md)（Superseded by ADR 0008）
 - [ADR 0006: LiquidAI/d1-2B を onnxruntime-web/webgpu 単体と事前コンパイル済みプロンプトで実行する](adr/0006-minimal-webgpu-inference-for-d1-2b-with-precompiled-prompts.md)
 - [ADR 0007: S ランク 11 設問による材質・環境タイプ体系、物理導出ステータス、不確実度レア度を採用する](adr/0007-creature-parameter-model-and-uncertainty-rarity.md)
+- [ADR 0008: ヘッドレス UI 基盤に Base UI (`@base-ui/react`) を採用し、フラットポップなデザインシステムで統一する](adr/0008-headless-base-ui-and-flat-pop-design-system.md)
+- [ADR 0009: クライアントサイド SPA ルーティングに TanStack Router（コードベース定義）を採用する](adr/0009-client-routing-with-tanstack-router.md)
+- [ADR 0010: v1 UI フローをコレクション起点（`/`）・クロップ付きスキャン（`/scan`）・表裏 PNG 共有＋ライト／ダーク対応で確定する](adr/0010-v1-collection-first-ui-flow-and-local-card-export.md)

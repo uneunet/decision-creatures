@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0008](./0008-headless-base-ui-and-flat-pop-design-system.md)
 
 ## Context
 
