@@ -361,13 +361,16 @@ export function ScanPage() {
             onClick={() => fileInputRef.current?.click()}
             className="group flex aspect-[3/4.08] w-full cursor-pointer flex-col overflow-hidden rounded-[24px] border-2 border-[var(--attr-stroke)] border-b-[6px] border-b-[var(--attr-lip)] bg-[var(--surface)] p-2.5 transition-transform duration-150 active:translate-y-[2px]"
           >
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[16px] border-2 border-dashed border-[var(--attr-stroke)] bg-[var(--surface-sub)] transition-colors group-hover:border-[var(--attr-lip)]">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[16px] border-2 border-dashed border-[var(--attr-stroke)] bg-[var(--surface-sub)] px-4 text-center transition-colors group-hover:border-[var(--attr-lip)]">
               <span className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-[var(--attr-stroke)] border-b-[4px] border-b-[var(--attr-lip)] bg-[var(--surface)] text-[var(--fg)] transition-transform duration-150 group-hover:-translate-y-0.5">
                 <ImagePlus className="h-6 w-6" strokeWidth={2.2} />
               </span>
-              <span className="font-mono text-xs font-extrabold text-[var(--fg-muted)]">
-                DROP / SELECT / PASTE
-              </span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-black text-[var(--fg)]">写真を選ぶ</span>
+                <span className="text-[11px] font-bold text-[var(--fg-muted)]">
+                  ドロップ・貼り付け対応
+                </span>
+              </div>
             </div>
           </button>
 

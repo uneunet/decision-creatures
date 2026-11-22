@@ -1,14 +1,15 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { ImagePlus, ScanLine, SlidersHorizontal } from 'lucide-react';
+import { Camera, ImagePlus, ScanLine, SlidersHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { BrandMark } from '../components/BrandMark';
 import { RaritySticker } from '../components/RaritySticker';
 import type { RarityTier, SubstanceType } from '../inference/types';
 import type { CollectionSortKey } from '../router';
 import { useCollectionStore } from '../store/useCollectionStore';
 import { useInferenceStore } from '../store/useInferenceStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { PopFilterGroup, PopFilterItem, PopPopover } from '../ui/primitives';
+import { PopButton, PopFilterGroup, PopFilterItem, PopPopover } from '../ui/primitives';
 import {
   RARITY_LIST,
   RARITY_THEME,
@@ -31,6 +32,7 @@ export function CollectionPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: '/' });
   const emptyFileInputRef = useRef<HTMLInputElement>(null);
+  const emptyCameraInputRef = useRef<HTMLInputElement>(null);
 
   const filterType = search.type ?? null;
   const filterRarity = search.rarity ?? null;
@@ -108,7 +110,7 @@ export function CollectionPage() {
     return <main className="flex flex-1 items-center justify-center p-8" />;
   }
 
-  // 0-item Empty State: interactive S1 scan slot (direct drop / select / paste → /scan crop)
+  // 0-item Empty State: inviting S1 card onboarding (pick / camera / drop / paste → /scan crop)
   if (items.length === 0) {
     return (
       <main
@@ -120,7 +122,7 @@ export function CollectionPage() {
             handoffToScan(file);
           }
         }}
-        className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-5 py-8"
+        className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-5 py-6"
       >
         <input
           ref={emptyFileInputRef}
@@ -133,21 +135,65 @@ export function CollectionPage() {
             e.target.value = '';
           }}
         />
+        <input
+          ref={emptyCameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handoffToScan(file);
+            e.target.value = '';
+          }}
+        />
+
         <button
           type="button"
           onClick={() => emptyFileInputRef.current?.click()}
-          aria-label="画像をドロップまたは選択して最初のカードを作る"
-          className="group flex aspect-[3/4.08] w-full max-w-[300px] cursor-pointer flex-col overflow-hidden rounded-[24px] border-2 border-[var(--attr-stroke)] border-b-[6px] border-b-[var(--attr-lip)] bg-[var(--surface)] p-2.5 transition-transform duration-150 active:translate-y-[2px]"
+          aria-label="写真を選んで最初のカードをスキャンする"
+          className="group flex aspect-[3/4.08] w-full max-w-[300px] cursor-pointer flex-col gap-3 overflow-hidden rounded-[24px] border-2 border-[var(--attr-stroke)] border-b-[6px] border-b-[var(--attr-lip)] bg-[var(--surface)] p-2.5 text-left transition-transform duration-150 active:translate-y-[2px]"
         >
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[16px] border-2 border-dashed border-[var(--attr-stroke)] bg-[var(--surface-sub)] transition-colors group-hover:border-[var(--attr-lip)]">
-            <span className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-[var(--attr-stroke)] border-b-[4px] border-b-[var(--attr-lip)] bg-[var(--surface)] text-[var(--fg)] transition-transform duration-150 group-hover:-translate-y-0.5">
-              <ImagePlus className="h-6 w-6" strokeWidth={2.2} />
-            </span>
-            <span className="font-mono text-xs font-extrabold text-[var(--fg-muted)]">
-              DROP / SELECT / PASTE
+          <div className="flex h-[56%] w-full flex-col items-center justify-center gap-2.5 rounded-[16px] border-2 border-dashed border-[var(--attr-stroke)] bg-[var(--surface-sub)] transition-colors group-hover:border-[var(--attr-lip)]">
+            <BrandMark
+              className="h-16 w-16 transition-transform duration-150 group-hover:-translate-y-0.5"
+              dynamic
+            />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] px-3 py-1 text-[11px] font-extrabold text-[var(--fg-muted)]">
+              <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.3} />
+              <span>タップ · ドロップ · 貼付</span>
             </span>
           </div>
+
+          <div className="flex flex-1 flex-col justify-center gap-1.5 px-2 pb-1 text-center">
+            <h1 className="text-[17px] leading-snug font-black tracking-tight text-[var(--fg)]">
+              まずはスキャンしてみよう！
+            </h1>
+            <p className="text-xs leading-relaxed font-bold text-[var(--fg-muted)]">
+              身近な写真をクリーチャーカードにして図鑑に集めよう
+            </p>
+          </div>
         </button>
+
+        <div className="flex w-full max-w-[300px] items-center justify-center gap-2.5">
+          <PopButton
+            variant="primary"
+            size="md"
+            className="flex-1"
+            onClick={() => emptyFileInputRef.current?.click()}
+          >
+            <ScanLine className="h-4 w-4" />
+            <span>写真を選ぶ</span>
+          </PopButton>
+          <PopButton
+            variant="surface"
+            size="md"
+            onClick={() => emptyCameraInputRef.current?.click()}
+          >
+            <Camera className="h-4 w-4" />
+            <span>カメラ</span>
+          </PopButton>
+        </div>
       </main>
     );
   }
