@@ -4,15 +4,11 @@
 
 ---
 
-## v1 リリース残タスク
+## v1 リリース後フォロー
 
-### 実機検証
-- [x] iPhone Safari 実機での軽量 WebGPU 推論 E2E 動作確認（`vision_encoder_q8` + 蒸留 `creature_head.onnx` 約 201 MB の初回 OPFS 保存・再読み込み・スキャン完走・`File.arrayBuffer()` 読込確認）
+### 追加検証（任意）
 - [ ] デスクトップ WebGPU ブラウザおよびモバイル実機での周辺操作チェック（カメラ撮影、カード枠内パン＆ズームクロップ、`navigator.share` による表裏 PNG 共有、画像トークン上限切替）
-
-### デプロイ・公開仕上げ
-- [ ] Cloudflare Workers へ本番デプロイ（`bun run deploy` / `cf deploy dist`）および `dc.uneu.net` 割り当て
-- [ ] 本番 URL（`https://dc.uneu.net`）での動作確認（`/models/creature_head.onnx` 配信・`/scan`・`/creatures/:id` 直アクセス時の SPA フォールバック、jsDelivr 経由の ORT WASM ロード、WebGPU Worker 実行、OGP カード検証）
+- [ ] 本番 URL（`https://dc.uneu.net`）での各画面・OGP カード最終確認（`/scan`・`/creatures/:id` 直アクセス時の SPA フォールバック、jsDelivr 経由の ORT WASM ロード、OGP 表示）
 
 ---
 
@@ -42,5 +38,8 @@
 - [x] コレクション一覧（`/`）・スキャン（`/scan`）・詳細（`/creatures/$id`）・表裏 2 枚並び PNG 出力＆共有・全 11 設問スコア詳細
 - [x] モデルセットアップ導線（初回約 200 MB 確認＆進捗表示・OPFS キャッシュ管理・旧キャッシュ自動掃除・WebGPU 非対応案内・`LFM Open License v1.0` 帰属表示）
 - [x] モバイル WebGPU 向け知識蒸留パイプライン構築と本番組み込み（`distill/`・完全ランダム CC12M 10,000 枚学習・未学習 12 枚一致率 93.3% / Stat MAE 2.80 / 相関 r=0.907・`public/models/creature_head.onnx` 4.85 MB・[ADR 0011](adr/0011-distilled-vision-head-for-mobile-webgpu.md)）
-- [x] Cloudflare Workers 静的配信設定（`cf` CLI + `cloudflare.config.ts`・`.assetsignore`＋本番 CDN 経由 ORT WASM ロード・`--dry-run` 通過）
+- [x] iPhone Safari 実機での軽量 WebGPU 推論 E2E 動作確認（約 201 MB OPFS キャッシュ・`File.arrayBuffer()` 読込・スキャン完走・WebGPU ロスト自動復旧）
+- [x] アプリ内透明性導線（「このサイトについて」ダイアログ＋フッターリンクでしくみ・Common〜Mythic レア度・画像非送信を明示）
+- [x] ライセンス整備（ソースコード: GNU AGPLv3 `AGPL-3.0-only`、オリジナルブランド素材: CC BY-NC 4.0、AI モデル: LFM Open License v1.0）
+- [x] Cloudflare Workers 本番デプロイ（`cf deploy dist`）および `https://dc.uneu.net` リリース
 - [x] ブランドアセット＆メタ情報（ロゴ `BrandMark` / `logo.svg`・`favicon.svg`・`apple-touch-icon.png`・`dc.uneu.net` 向け `ogp.png` 1200×630＆OGP/Twitter Card メタタグ）
